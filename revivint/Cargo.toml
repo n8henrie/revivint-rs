@@ -1,0 +1,19 @@
+[package]
+name = "revivint"
+description = "Recover the seed and decode 345 MHz transmissions from Vivint/Honeywell door & window sensors, from rtl_433 captures"
+keywords = ["vivint", "honeywell", "345mhz", "rtl433", "rf"]
+categories = ["command-line-utilities"]
+version = "0.1.1"
+edition.workspace = true
+rust-version.workspace = true
+publish = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+revivint-core = { workspace = true, features = ["std"] }
+clap = { version = "4", features = ["derive"] }
+
+[lints.clippy]
+pedantic = "warn"

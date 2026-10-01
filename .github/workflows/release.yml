@@ -1,0 +1,53 @@
+name: "Publish to crates.io"
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+        with:
+          determinate: false
+
+      - name: Check tag matches the CLI version
+        run: |
+          version=$(nix eval --raw .#revivint.version)
+          if [[ "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match revivint ${version}"
+            exit 1
+          fi
+
+      - name: Build and test
+        run: nix build --print-build-logs .#revivint
+
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - name: Publish revivint-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          version=$(nix eval --raw --impure --expr \
+            '(builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version')
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -A "revivint-release (github.com/${GITHUB_REPOSITORY})" \
+            "https://crates.io/api/v1/crates/revivint-core/${version}")
+          if [[ "${status}" == 200 ]]; then
+            echo "revivint-core ${version} already published; skipping"
+          else
+            nix develop --command cargo publish --locked --package revivint-core
+          fi
+
+      - name: Publish revivint
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: nix develop --command cargo publish --locked --package revivint

@@ -1,0 +1,31 @@
+name: "Build with nix"
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+        with:
+          determinate: false
+      - name: Check flake
+        run: nix flake check --all-systems
+      - name: Build CLI
+        run: nix build --print-build-logs .#revivint
+      - name: Build firmware
+        env:
+          WIFI_SSID: ci-placeholder
+          WIFI_PASS: ci-placeholder
+          MQTT_BROKER_IP: 192.0.2.1
+          VIVINT_KEYS: 405817=0c5e
+        run: nix build --impure --print-build-logs .#revivint-esp

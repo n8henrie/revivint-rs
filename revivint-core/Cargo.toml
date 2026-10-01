@@ -1,0 +1,31 @@
+[package]
+name = "revivint-core"
+description = "Decode Honeywell/2GIG/Vivint 345 MHz door & window sensors: frames, CRC, the Rabbit-based keystream, and the OOK bit layer. no_std, no alloc."
+keywords = ["vivint", "honeywell", "345mhz", "rtl433", "no-std"]
+categories = ["embedded", "no-std", "parser-implementations"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["std"]
+# Host conveniences: the parallel seed search and `std::error::Error` impls.
+std = []
+# MQTT topic + Home Assistant discovery formatting (buffer-based, still no_std).
+mqtt = []
+# CC1101 radio driver + 345 MHz OOK register profiles. No external deps; only
+# firmware needs it, so it is off by default.
+cc1101 = []
+
+[dependencies]
+
+# Exercises `Recovery` against the CC1101's chip-level sync word, so it needs the
+# feature-gated `cc1101` module. Integration tests do not see the library's
+# `cfg(test)`, so without this a plain `cargo test` fails to compile rather than
+# skipping it.
+[[test]]
+name = "recovery_stats"
+required-features = ["cc1101"]

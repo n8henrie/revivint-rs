@@ -1,0 +1,20 @@
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.riscv32imc-unknown-none-elf]
+runner = "espflash flash --monitor"
+rustflags = ["-C", "link-arg=-Tlinkall.x", "-C", "force-frame-pointers"]
+
+[env]
+ESP_LOG = "info"
+
+# Two toolchains build this firmware, and this table serves both:
+#
+# - rustup (../rust-toolchain.toml) ships core/alloc for riscv32imc prebuilt.
+#   Stable cargo silently ignores the [unstable] table below, so nothing is
+#   rebuilt.
+# - nixpkgs' rustc ships no riscv32imc target at all, so core/alloc must be
+#   built from source. The Nix build and dev shell set RUSTC_BOOTSTRAP=1, which
+#   is what makes cargo honour this table.
+[unstable]
+build-std = ["core", "alloc"]

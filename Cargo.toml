@@ -1,0 +1,43 @@
+# One workspace for everything that builds and tests on the host.
+#
+# `revivint-esp` (the ESP32-C3 firmware) is a member but not a default member:
+# it targets riscv32imc-unknown-none-elf and carries its own .cargo/config.toml
+# pinning that target, a linker script and the espflash runner. Leaving it out of
+# the defaults means `cargo test` here builds and runs the whole host suite in
+# one command; see `default-members` below.
+[workspace]
+# A virtual workspace does not inherit the resolver from its members' edition
+# 2024, so state it (resolver 3 is the MSRV-aware one).
+resolver = "3"
+members = ["revivint-core", "revivint", "revivint-esp"]
+# The firmware IS a member — so `cargo clean`, `cargo update` and friends cover
+# it — but it is NOT a default member, because it only builds for
+# riscv32imc-unknown-none-elf. A bare `cargo build`/`cargo test` here therefore
+# skips it and stays on the host; build it from its own directory (where its
+# .cargo/config.toml pins the target) or with an explicit --target.
+#
+# Note `--workspace` overrides this and WILL try to build the firmware for the
+# host, which fails. Use plain `cargo test` at the root.
+default-members = ["revivint-core", "revivint"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/n8henrie/revivint-rs"
+authors = ["Nathan Henrie <nate@n8henrie.com>"]
+
+[workspace.dependencies]
+revivint-core = { version = "0.1.0", path = "revivint-core", default-features = false }
+
+# Profiles apply workspace-wide and may only be set in the root manifest.
+[profile.release]
+opt-level = "s"
+lto = true
+debug = 2
+
+# esp-radio needs optimisation to keep up with the Wi-Fi driver's timing, even
+# in debug builds.
+[profile.dev.package.esp-radio]
+opt-level = 3

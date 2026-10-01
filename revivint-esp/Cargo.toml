@@ -1,0 +1,127 @@
+[package]
+name = "revivint-esp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+# Firmware for one board, built for riscv32imc-unknown-none-elf: nothing a
+# crates.io user could `cargo install`, and it would fail to verify on a host.
+publish = false
+description = "ESP32-C3 + CC1101 firmware: receive, decode and publish Vivint/Honeywell 345 MHz door sensors to MQTT"
+
+[features]
+# Exactly one decode strategy must be enabled; see the table in src/main.rs.
+#
+# The production receiver. The radio does OOK demodulation, bit timing,
+# sync detection and FIFO buffering; the MCU decodes ~160 Manchester chips per
+# packet. Measured on hardware: 100% of events, 209 frames straight from the
+# packet engine, no software rescues.
+default = ["hw"]
+hw = []
+# Diagnostic only. The radio is a dumb OOK slicer and the MCU times every edge
+# through the RMT. Slower and less accurate (50% of events on the same bench),
+# but it is the only mode that can report raw edge timings, which is how the
+# chip period and the slicer skew were measured. Kept as an instrument.
+sw = []
+# Bench-diagnostic build: no Wi-Fi, no MQTT, longer capture, TI DN022 AGC
+# baseline, and the sync offset reported per packet. Keeps the RF path the only
+# variable, and boots in ~1 s instead of waiting on the network.
+diag = []
+
+[dependencies]
+# The driver and the decoder are one crate: `cc1101` carries the radio, `mqtt`
+# the topic/Home Assistant formatting. Both are no_std, no-alloc.
+revivint-core = { workspace = true, features = ["mqtt", "cc1101"] }
+
+# ---- esp-rs core -------------------------------------------------------------
+# esp-hal 1.1 replaced the old glue crates: `esp-hal-embassy` became `esp-rtos`
+# (a real scheduler that also backs the radio) and `esp-wifi` became `esp-radio`.
+esp-hal = { version = "1.1", features = ["esp32c3", "unstable"] }
+esp-rtos = { version = "0.3", features = ["esp32c3", "embassy", "esp-radio", "esp-alloc"] }
+esp-radio = { version = "0.18", features = ["esp32c3", "wifi", "esp-alloc"] }
+# MUST match the version esp-radio/esp-rtos depend on. esp-alloc keeps the heap
+# in a crate-level `static HEAP`, so a semver-incompatible mismatch links *two*
+# allocators: `heap_allocator!` registers regions into ours while esp-rtos and
+# esp-radio allocate from theirs, which has none — every allocation then fails
+# with a bare "memory allocation of N bytes failed", whatever the size.
+# Check with: cargo tree --duplicates | grep esp-alloc
+esp-alloc = { version = "0.10", features = ["esp32c3"] }
+esp-bootloader-esp-idf = { version = "0.5", features = ["esp32c3"] }
+esp-backtrace = { version = "0.20", features = ["esp32c3", "panic-handler", "println"] }
+esp-println = { version = "0.18", features = ["esp32c3", "log-04"] }
+log = "0.4"
+
+# ---- embassy -----------------------------------------------------------------
+# NOTE: do not enable any `arch-*`/`executor-*` feature here — esp-rtos provides
+# the executor. embassy-executor 0.9 dropped the global task arena entirely, so
+# there is no `task-arena-size-*` to tune any more (tasks are sized per-task).
+embassy-executor = "0.10"
+embassy-time = "0.5"
+embassy-net = { version = "0.9", features = ["tcp", "dhcpv4", "medium-ethernet", "proto-ipv4"] }
+embassy-sync = "0.8"
+embassy-futures = "0.1"
+
+# ---- MQTT --------------------------------------------------------------------
+# rust-mqtt 0.5 is a full rewrite of 0.3 with real MQTT-5 will/retain support,
+# which is what the Home Assistant availability topic and retained discovery
+# configs need. `alloc` selects its AllocBuffer (esp-alloc supplies the heap).
+rust-mqtt = { version = "0.5", default-features = false, features = ["v5", "alloc", "log-level-warn"] }
+embedded-io-async = "0.7"
+static_cell = "2"
+heapless = "0.9"
+# riscv32imc lacks atomic RMW instructions, so `core`'s AtomicU32 has no
+# `fetch_add`. esp-hal already configures portable-atomic's single-core mode for
+# this target, so no feature is needed here (and `critical-section` would clash).
+portable-atomic = "1"
+
+# ---- build-std lockfile pins -------------------------------------------------
+# Never compiled into the firmware. `-Zbuild-std` builds core and alloc from
+# Rust's own `library/` workspace, which has crates.io dependencies of its own;
+# pinning them here, at exactly the versions in library/Cargo.lock, puts them in
+# this workspace's Cargo.lock so the Nix build (which vendors only that lock and
+# builds offline) has them. Every registry package is listed, transitive ones
+# too, so none can drift to a newer patch release. Default features are off so
+# they pull in nothing library/ does not.
+#
+# Because one Cargo.lock serves the whole workspace, these exact pins also hold
+# any other user of the same crates (cc, libc, memchr, ...) at these versions.
+#
+# They must match the Rust release nixpkgs ships. After a nixpkgs update, a
+# "no matching package named ..." build error means regenerate this list from
+# the `[[package]]` entries with a crates.io source in
+# $(nix eval --raw .#revivint-esp.passthru.rustLibSrc)/Cargo.lock
+# and run `cargo update -p revivint-esp`. rustup builds are unaffected: they
+# resolve build-std online, against their own rust-src.
+[dev-dependencies]
+addr2line = { version = "=0.25.1", default-features = false }
+adler2 = { version = "=2.0.1", default-features = false }
+cc = { version = "=1.2.0", default-features = false }
+cfg-if = { version = "=1.0.4", default-features = false }
+dlmalloc = { version = "=0.2.13", default-features = false }
+foldhash = { version = "=0.2.0", default-features = false }
+fortanix-sgx-abi = { version = "=0.6.1", default-features = false }
+getopts = { version = "=0.2.24", default-features = false }
+gimli = { version = "=0.32.3", default-features = false }
+hashbrown = { version = "=0.17.1", default-features = false }
+hermit-abi = { version = "=0.5.2", default-features = false }
+libc = { version = "=0.2.185", default-features = false }
+memchr = { version = "=2.7.6", default-features = false }
+miniz_oxide = { version = "=0.8.9", default-features = false }
+moto-rt = { version = "=0.16.0", default-features = false }
+object = { version = "=0.37.3", default-features = false }
+r-efi = { version = "=5.3.0", default-features = false }
+r-efi-alloc = { version = "=2.1.0", default-features = false }
+rand = { version = "=0.9.2", default-features = false }
+rand_core = { version = "=0.9.3", default-features = false }
+rand_xorshift = { version = "=0.4.0", default-features = false }
+rustc-demangle = { version = "=0.1.27", default-features = false }
+rustc-literal-escaper = { version = "=0.0.8", default-features = false }
+shlex = { version = "=1.3.0", default-features = false }
+unwinding = { version = "=0.2.8", default-features = false }
+vex-sdk = { version = "=0.27.1", default-features = false }
+wasip1 = { version = "=1.0.0", default-features = false }
+wasip2 = { version = "=1.0.3", default-features = false }
+wasip3 = { version = "=0.6.0", default-features = false }
+wit-bindgen = { version = "=0.57.1", default-features = false }
