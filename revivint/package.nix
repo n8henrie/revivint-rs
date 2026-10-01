@@ -3,7 +3,8 @@
   rustPlatform,
 }:
 let
-  inherit ((lib.importTOML ./Cargo.toml).package) name version description;
+  inherit ((lib.importTOML ./Cargo.toml).package) name description;
+  inherit ((lib.importTOML ../Cargo.toml).workspace.package) version;
 in
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = name;
